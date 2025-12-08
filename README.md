@@ -1,59 +1,168 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 📸 Laravel 11 – Simple Image Upload & Public Storage (Basic Product CRUD)
+![Laravel](https://img.shields.io/badge/Laravel-11-orange)
+![PHP](https://img.shields.io/badge/PHP-8.2-blue)
+![Bootstrap](https://img.shields.io/badge/Bootstrap-5-purple)
+![MySQL](https://img.shields.io/badge/Database-MySQL-yellow)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+This guide explains **only** how a single image is uploaded in Laravel 11, how it is saved inside the **public folder**, and how a basic Product CRUD works using the fields:
 
-## About Laravel
+✔ name  
+✔ details  
+✔ image  
+✔ size  
+✔ color  
+✔ category  
+✔ price  
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+# ⭐ Features
+- Upload a **single image**
+- Save image directly in **public/images**
+- Store path in database
+- Display image in product listing
+- Simple CRUD (Create, Edit, Delete)
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+# 🧱 1. Migration (products table)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+```php
+$table->string('name');
+$table->text('details');
+$table->string('image')->nullable();
+$table->string('size');
+$table->string('color');
+$table->string('category');
+$table->decimal('price', 8, 2);
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+# 🧠 2. Product Model
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```php
+protected $fillable = [
+    'name','details','image','size','color','category','price'
+];
+```
 
-### Premium Partners
+---
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+# 📤 3. Image Upload Logic (Store)
 
-## Contributing
+```php
+public function store(Request $request)
+{
+    $request->validate([
+        'name' => 'required',
+        'details' => 'required',
+        'size' => 'required',
+        'color' => 'required',
+        'category' => 'required',
+        'price' => 'required|numeric',
+        'image' => 'nullable|image|max:2048'
+    ]);
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+    $imagePath = null;
 
-## Code of Conduct
+    if ($request->hasFile('image')) {
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+        $image = $request->file('image');
+        $imageName = time() . '_' . $image->getClientOriginalName();
 
-## Security Vulnerabilities
+        // Upload image to public folder
+        $image->move(public_path('images'), $imageName);
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+        $imagePath = 'images/' . $imageName;
+    }
 
-## License
+    Product::create([
+        'name' => $request->name,
+        'details' => $request->details,
+        'image' => $imagePath,
+        'size' => $request->size,
+        'color' => $request->color,
+        'category' => $request->category,
+        'price' => $request->price,
+    ]);
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+    return redirect()->route('products.index');
+}
+```
+
+---
+
+# ✏️ 4. Update Logic (Replace Image)
+
+```php
+public function update(Request $request, Product $product)
+{
+    $imagePath = $product->image;
+
+    if ($request->hasFile('image')) {
+
+        if ($product->image && file_exists(public_path($product->image))) {
+            unlink(public_path($product->image));
+        }
+
+        $image = $request->file('image');
+        $imageName = time().'_'.$image->getClientOriginalName();
+        $image->move(public_path('images'), $imageName);
+
+        $imagePath = 'images/'.$imageName;
+    }
+
+    $product->update([
+        'name' => $request->name,
+        'details' => $request->details,
+        'image' => $imagePath,
+        'size' => $request->size,
+        'color' => $request->color,
+        'category' => $request->category,
+        'price' => $request->price,
+    ]);
+
+    return redirect()->route('products.index');
+}
+```
+
+---
+
+# 🗑️ 5. Delete Image + Product
+
+```php
+if ($product->image && file_exists(public_path($product->image))) {
+    unlink(public_path($product->image));
+}
+
+$product->delete();
+```
+
+---
+
+# 🖼️ 6. Show Image in Blade
+
+```html
+@if($product->image)
+    <img src="{{ asset($product->image) }}" width="80">
+@endif
+```
+
+---
+
+# 📁 Where Images Are Stored?
+
+Images are uploaded to:
+
+```
+public/images
+```
+
+Access using:
+
+```php
+asset('images/filename.jpg')
+```
+
+---<img width="676" height="213" alt="image" src="https://github.com/user-attachments/assets/08ec545b-7897-445d-a5b2-8a2796d894e3" />
