@@ -1,56 +1,130 @@
- Laravel 11 – Simple Image Upload & Public Storage (Basic Product CRUD)
- 
-![Laravel](https://img.shields.io/badge/Laravel-11-orange)
-![PHP](https://img.shields.io/badge/PHP-8.2-blue)
-![Bootstrap](https://img.shields.io/badge/Bootstrap-5-purple)
-![MySQL](https://img.shields.io/badge/Database-MySQL-yellow)
+# PHP_Laravel11_File_Upload_-_Storage_Handling
 
-This guide explains **only** how a single image is uploaded in Laravel 11, how it is saved inside the **public folder**, and how a basic Product CRUD works using the fields:
+This documentation explains how to build a complete CRUD system in Laravel 11  
+with **image upload, update and delete**, and storing files in the **public/images** folder.
 
-✔ name  
-✔ details  
-✔ image  
-✔ size  
-✔ color  
-✔ category  
-✔ price  
+No search, no pagination, no sorting — only pure CRUD + file handling.
 
 ---
 
- Features
-- Upload a **single image**
-- Save image directly in **public/images**
-- Store path in database
-- Display image in product listing
-- Simple CRUD (Create, Edit, Delete)
+# Step 1: Create Laravel Project
 
----
+Open terminal and run:
 
- 1. Migration (products table)
+```
+composer create-project laravel/laravel product-crud
+```
 
-```php
-$table->string('name');
-$table->text('details');
-$table->string('image')->nullable();
-$table->string('size');
-$table->string('color');
-$table->string('category');
-$table->decimal('price', 8, 2);
+Enter project folder:
+
+```
+cd product-crud
+```
+
+Run server:
+
+```
+php artisan serve
 ```
 
 ---
 
- 2. Product Model
+# Step 2: Configure Database
 
-```php
-protected $fillable = [
-    'name','details','image','size','color','category','price'
-];
+Open `.env` and set MySQL credentials:
+
+```
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=your_db_name
+DB_USERNAME=root
+DB_PASSWORD=root
 ```
 
 ---
 
- 3. Image Upload Logic (Store)
+# Step 3: Create Products Migration
+
+```
+php artisan make:migration create_products_table --create=products
+```
+
+Open migration file and add:
+
+```php
+Schema::create('products', function (Blueprint $table) {
+    $table->id();
+    $table->string('name');
+    $table->text('details');
+    $table->string('image')->nullable(); // store image path
+    $table->decimal('price', 8, 2);
+    $table->timestamps();
+});
+```
+
+Run migration:
+
+```
+php artisan migrate
+```
+
+---
+
+# Step 4: Create Model
+
+```
+php artisan make:model Product
+```
+
+Open model: `app/Models/Product.php`
+
+```php
+class Product extends Model
+{
+    protected $fillable = [
+        'name','details','image','price'
+    ];
+}
+```
+
+---
+
+# Step 5: Add CRUD Routes
+
+Open `routes/web.php`:
+
+```php
+use App\Http\Controllers\ProductController;
+
+Route::resource('products', ProductController::class);
+```
+
+---
+
+# Step 6: Create Controller
+
+```
+php artisan make:controller ProductController --resource --model=Product
+```
+
+---
+
+# Step 7: Implement Full CRUD + Image Upload
+
+Below is complete logic for:
+
+ Create  
+ Read  
+ Update  
+ Delete  
+ Image upload → public/images  
+ Remove old image on update  
+ Remove image on delete  
+
+---
+
+##  STORE (Create Product + Upload Image)
 
 ```php
 public function store(Request $request)
@@ -58,9 +132,6 @@ public function store(Request $request)
     $request->validate([
         'name' => 'required',
         'details' => 'required',
-        'size' => 'required',
-        'color' => 'required',
-        'category' => 'required',
         'price' => 'required|numeric',
         'image' => 'nullable|image|max:2048'
     ]);
@@ -70,39 +141,76 @@ public function store(Request $request)
     if ($request->hasFile('image')) {
 
         $image = $request->file('image');
-        $imageName = time() . '_' . $image->getClientOriginalName();
 
-        // Upload image to public folder
+        $imageName = time().'_'.$image->getClientOriginalName();
+
+        // Save to /public/images
         $image->move(public_path('images'), $imageName);
 
+        // Save path to DB
         $imagePath = 'images/' . $imageName;
     }
 
     Product::create([
         'name' => $request->name,
         'details' => $request->details,
-        'image' => $imagePath,
-        'size' => $request->size,
-        'color' => $request->color,
-        'category' => $request->category,
         'price' => $request->price,
+        'image' => $imagePath,
     ]);
 
-    return redirect()->route('products.index');
+    return redirect()->route('products.index')->with('success', 'Product created!');
+}
+```
+
+###  How image uploading works?
+- User selects a file  
+- Laravel gets it via `$request->file('image')`  
+- `move(public_path('images'), $imageName)` stores image in **public/images**  
+- Only **path** (`images/filename.jpg`) is saved in database  
+
+---
+
+##  INDEX (Show All Products)
+
+```php
+public function index()
+{
+    $products = Product::all(); // No pagination
+    return view('products.index', compact('products'));
 }
 ```
 
 ---
 
- 4. Update Logic (Replace Image)
+## EDIT (Load Edit Form)
+
+```php
+public function edit(Product $product)
+{
+    return view('products.edit', compact('product'));
+}
+```
+
+---
+
+##  UPDATE (Replace Image + Delete Old One)
 
 ```php
 public function update(Request $request, Product $product)
 {
+    $request->validate([
+        'name' => 'required',
+        'details' => 'required',
+        'price' => 'required|numeric',
+        'image' => 'nullable|image|max:2048',
+    ]);
+
     $imagePath = $product->image;
 
+    // If new image uploaded
     if ($request->hasFile('image')) {
 
+        // Delete old image
         if ($product->image && file_exists(public_path($product->image))) {
             unlink(public_path($product->image));
         }
@@ -111,46 +219,91 @@ public function update(Request $request, Product $product)
         $imageName = time().'_'.$image->getClientOriginalName();
         $image->move(public_path('images'), $imageName);
 
-        $imagePath = 'images/'.$imageName;
+        $imagePath = 'images/' . $imageName;
     }
 
     $product->update([
         'name' => $request->name,
         'details' => $request->details,
-        'image' => $imagePath,
-        'size' => $request->size,
-        'color' => $request->color,
-        'category' => $request->category,
         'price' => $request->price,
+        'image' => $imagePath,
     ]);
 
-    return redirect()->route('products.index');
+    return redirect()->route('products.index')->with('success', 'Product updated!');
 }
 ```
 
 ---
 
- 5. Delete Image + Product
+## DELETE (Remove Product + Delete Image)
 
 ```php
-if ($product->image && file_exists(public_path($product->image))) {
-    unlink(public_path($product->image));
+public function destroy(Product $product)
+{
+    if ($product->image && file_exists(public_path($product->image))) {
+        unlink(public_path($product->image));
+    }
+
+    $product->delete();
+
+    return redirect()->route('products.index')->with('success', 'Product deleted!');
 }
-
-$product->delete();
 ```
 
 ---
 
- 6. Show Image in Blade
+# Step 8: Blade Views
 
-```html
-@if($product->image)
-    <img src="{{ asset($product->image) }}" width="80">
-@endif
+## Create / Edit Forms
+
+```blade
+<form action="{{ isset($product) ? route('products.update', $product) : route('products.store') }}" 
+      method="POST" enctype="multipart/form-data">
+
+    @csrf
+    @if(isset($product)) @method('PUT') @endif
+
+    <input type="text" name="name" value="{{ $product->name ?? '' }}" required>
+    <textarea name="details">{{ $product->details ?? '' }}</textarea>
+    <input type="number" name="price" value="{{ $product->price ?? '' }}" step="0.01" required>
+
+    <input type="file" name="image">
+
+    @if(isset($product) && $product->image)
+        <img src="{{ asset($product->image) }}" width="100">
+    @endif
+
+    <button type="submit">Save</button>
+</form>
 ```
 
 ---
+
+## Index Page
+
+```blade
+@foreach($products as $product)
+<tr>
+    <td>{{ $product->name }}</td>
+    <td>{{ $product->details }}</td>
+    <td>{{ $product->price }}</td>
+    <td>
+        @if($product->image)
+            <img src="{{ asset($product->image) }}" width="80">
+        @endif
+    </td>
+    <td>
+        <a href="{{ route('products.edit', $product) }}">Edit</a>
+
+        <form action="{{ route('products.destroy', $product) }}" method="POST">
+            @csrf
+            @method('DELETE')
+            <button>Delete</button>
+        </form>
+    </td>
+</tr>
+@endforeach
+```
 
  Where Images Are Stored?
 
