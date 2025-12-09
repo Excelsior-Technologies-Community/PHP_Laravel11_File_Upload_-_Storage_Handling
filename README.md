@@ -1,4 +1,5 @@
-# 📸 Laravel 11 – Simple Image Upload & Public Storage (Basic Product CRUD)
+ Laravel 11 – Simple Image Upload & Public Storage (Basic Product CRUD)
+ 
 ![Laravel](https://img.shields.io/badge/Laravel-11-orange)
 ![PHP](https://img.shields.io/badge/PHP-8.2-blue)
 ![Bootstrap](https://img.shields.io/badge/Bootstrap-5-purple)
@@ -16,7 +17,7 @@ This guide explains **only** how a single image is uploaded in Laravel 11, how i
 
 ---
 
-# ⭐ Features
+ Features
 - Upload a **single image**
 - Save image directly in **public/images**
 - Store path in database
@@ -25,7 +26,7 @@ This guide explains **only** how a single image is uploaded in Laravel 11, how i
 
 ---
 
-# 🧱 1. Migration (products table)
+ 1. Migration (products table)
 
 ```php
 $table->string('name');
@@ -39,7 +40,7 @@ $table->decimal('price', 8, 2);
 
 ---
 
-# 🧠 2. Product Model
+ 2. Product Model
 
 ```php
 protected $fillable = [
@@ -49,7 +50,7 @@ protected $fillable = [
 
 ---
 
-# 📤 3. Image Upload Logic (Store)
+ 3. Image Upload Logic (Store)
 
 ```php
 public function store(Request $request)
@@ -93,7 +94,7 @@ public function store(Request $request)
 
 ---
 
-# ✏️ 4. Update Logic (Replace Image)
+ 4. Update Logic (Replace Image)
 
 ```php
 public function update(Request $request, Product $product)
@@ -129,7 +130,7 @@ public function update(Request $request, Product $product)
 
 ---
 
-# 🗑️ 5. Delete Image + Product
+ 5. Delete Image + Product
 
 ```php
 if ($product->image && file_exists(public_path($product->image))) {
@@ -141,7 +142,7 @@ $product->delete();
 
 ---
 
-# 🖼️ 6. Show Image in Blade
+ 6. Show Image in Blade
 
 ```html
 @if($product->image)
@@ -151,7 +152,7 @@ $product->delete();
 
 ---
 
-# 📁 Where Images Are Stored?
+ Where Images Are Stored?
 
 Images are uploaded to:
 
