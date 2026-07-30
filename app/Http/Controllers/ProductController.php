@@ -5,9 +5,45 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\Tag;
 use Illuminate\Http\Request;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
 
 class ProductController extends Controller
 {
+    private function processImage($image, $filename)
+    {
+        $originalPath = public_path('images/' . $filename);
+        $thumbnailDir = public_path('images/thumbnails');
+        
+        $manager = new ImageManager(new Driver());
+        $img = $manager->decode($image->getRealPath());
+        
+        if ($img->width() > 1200 || $img->height() > 1200) {
+            $img->scaleDown(width: 1200, height: 1200);
+        }
+        
+        $img->save($originalPath, quality: 80);
+        
+        $sizes = [
+            'small' => 150,
+            'medium' => 400,
+            'large' => 800,
+        ];
+        
+        foreach ($sizes as $size => $width) {
+            $dir = $thumbnailDir . '/' . $size;
+            if (!file_exists($dir)) {
+                mkdir($dir, 0755, true);
+            }
+            
+            $thumb = $manager->decodePath($originalPath);
+            $thumb->scaleDown(width: $width);
+            $thumb->save($dir . '/' . $filename, quality: 80);
+        }
+        
+        return 'images/' . $filename;
+    }
+
     // Show all products
     public function index(Request $request)
     {
@@ -59,6 +95,7 @@ class ProductController extends Controller
             'category'  => 'required',
             'price'     => 'required|numeric',
             'images.*'  => 'nullable|image|max:2048',
+            'temp_images' => 'nullable|array',
             'tag_ids'   => 'nullable|array',
         ]);
 
@@ -66,23 +103,51 @@ class ProductController extends Controller
 
         if ($request->hasFile('images')) {
             foreach ($request->file('images') as $image) {
-
                 $imageName = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
-                $image->move(public_path('images'), $imageName);
+                $imagePaths[] = $this->processImage($image, $imageName);
+            }
+        }
 
-                $imagePaths[] = 'images/' . $imageName;
+        if ($request->filled('temp_images')) {
+            $tempDir = public_path('images/temp');
+            $finalDir = public_path('images');
+            $thumbnailDir = public_path('images/thumbnails');
+            
+            foreach ($request->temp_images as $tempPath) {
+                $filename = basename($tempPath);
+                $source = $tempDir . '/' . $filename;
+                $destination = $finalDir . '/' . $filename;
+                
+                if (file_exists($source)) {
+                    rename($source, $destination);
+                    
+                    $manager = new ImageManager(new Driver());
+                    $sizes = ['small' => 150, 'medium' => 400, 'large' => 800];
+                    foreach ($sizes as $size => $width) {
+                        $dir = $thumbnailDir . '/' . $size;
+                        if (!file_exists($dir)) {
+                            mkdir($dir, 0755, true);
+                        }
+                        
+                        $thumb = $manager->decodePath($destination);
+                        $thumb->scaleDown(width: $width);
+                        $thumb->save($dir . '/' . $filename, quality: 80);
+                    }
+                    
+                    $imagePaths[] = 'images/' . $filename;
+                }
             }
         }
 
         Product::create([
             'name'      => $request->name,
             'details'   => $request->details,
-            'images'    => $imagePaths,         // ← NO JSON ENCODE
+            'images'    => $imagePaths,
             'size'      => $request->size,
             'color'     => $request->color,
             'category'  => $request->category,
             'price'     => $request->price,
-            'tag_ids'   => $request->tag_ids,   // ← NO JSON ENCODE
+            'tag_ids'   => $request->tag_ids,
         ]);
 
         return redirect()->route('products.index')->with('success', 'Product created successfully.');
@@ -106,44 +171,78 @@ class ProductController extends Controller
             'category'  => 'required',
             'price'     => 'required|numeric',
             'images.*'  => 'nullable|image|max:2048',
+            'temp_images' => 'nullable|array',
             'tag_ids'   => 'nullable|array',
         ]);
 
         $finalImages = $product->images ?? [];
 
-        // DELETE OLD SELECTED IMAGES
         if ($request->has('delete_images')) {
             foreach ($request->delete_images as $delImg) {
-
                 if (file_exists(public_path($delImg))) {
                     unlink(public_path($delImg));
+                }
+                
+                $filename = basename($delImg);
+                $thumbnailDir = public_path('images/thumbnails');
+                foreach (['small', 'medium', 'large'] as $size) {
+                    $thumbPath = $thumbnailDir . '/' . $size . '/' . $filename;
+                    if (file_exists($thumbPath)) {
+                        unlink($thumbPath);
+                    }
                 }
 
                 $finalImages = array_values(array_filter($finalImages, fn($img) => $img !== $delImg));
             }
         }
 
-        // UPLOAD NEW IMAGES
         if ($request->hasFile('images')) {
             foreach ($request->file('images') as $image) {
-
                 $imageName = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
-                $image->move(public_path('images'), $imageName);
-
-                $finalImages[] = 'images/' . $imageName;
+                $finalImages[] = $this->processImage($image, $imageName);
             }
         }
 
-        // UPDATE PRODUCT
+        if ($request->filled('temp_images')) {
+            $tempDir = public_path('images/temp');
+            $finalDir = public_path('images');
+            $thumbnailDir = public_path('images/thumbnails');
+            
+            foreach ($request->temp_images as $tempPath) {
+                $filename = basename($tempPath);
+                $source = $tempDir . '/' . $filename;
+                $destination = $finalDir . '/' . $filename;
+                
+                if (file_exists($source)) {
+                    rename($source, $destination);
+                    
+                    $manager = new ImageManager(new Driver());
+                    $sizes = ['small' => 150, 'medium' => 400, 'large' => 800];
+                    foreach ($sizes as $size => $width) {
+                        $dir = $thumbnailDir . '/' . $size;
+                        if (!file_exists($dir)) {
+                            mkdir($dir, 0755, true);
+                        }
+                        
+                        $thumb = $manager->decodePath($destination);
+                        $thumb->scaleDown(width: $width);
+                        $thumb->save($dir . '/' . $filename, quality: 80);
+                    }
+                    
+                    $finalImages[] = 'images/' . $filename;
+                }
+            }
+        }
+
         $product->update([
             'name'      => $request->name,
             'details'   => $request->details,
-            'images'    => $finalImages,        // ← array only
+            'images'    => $finalImages,
             'size'      => $request->size,
             'color'     => $request->color,
             'category'  => $request->category,
             'price'     => $request->price,
-            'tag_ids'   => $request->tag_ids,   // ← array only
+            'tag_ids'   => $request->tag_ids,
         ]);
 
         return redirect()->route('products.index')->with('success', 'Product updated successfully.');

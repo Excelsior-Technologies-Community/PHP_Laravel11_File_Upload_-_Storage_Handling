@@ -9,12 +9,10 @@
 
     <title>{{ config('app.name', 'Laravel') }} - Admin</title>
 
-    <!-- Fonts / Bootstrap CSS -->
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <!-- PAGE SPECIFIC STYLES (Select2 CSS etc.) -->
     @yield('styles')
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -30,14 +28,24 @@
         @yield('content')
     </div>
 
-    <!-- jQuery REQUIRED for Select2 -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    {{-- TOAST CONTAINER --}}
+    <div class="toast-container position-fixed top-0 end-0 p-3">
+        @if(session('success'))
+            <div class="toast show" role="alert">
+                <div class="toast-header bg-success text-white">
+                    <strong class="me-auto">Success</strong>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+                </div>
+                <div class="toast-body">
+                    {{ session('success') }}
+                </div>
+            </div>
+        @endif
+    </div>
 
-    <!-- Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-    <!-- PAGE SPECIFIC SCRIPTS (Select2 JS etc.) -->
     @stack('scripts')
-
 </body>
 </html>

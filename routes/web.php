@@ -5,11 +5,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CustomerProductsController;
 use App\Http\Controllers\TagController;
-
-// Product routes
+use App\Http\Controllers\TempImageController;
 
 Route::middleware(['auth'])->group(function () {
     Route::resource('products', ProductController::class);
+    Route::post('/products/temp-upload', [TempImageController::class, 'upload'])->name('products.temp-upload');
+    Route::delete('/products/temp-upload/{filename}', [TempImageController::class, 'destroy'])->name('products.temp-destroy');
 });
 
 // Customer product viewing route
