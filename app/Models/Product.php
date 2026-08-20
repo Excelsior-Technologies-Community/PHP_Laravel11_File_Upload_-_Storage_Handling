@@ -13,7 +13,8 @@ class Product extends Model
     protected $fillable = [
         'name',
         'details',
-        'images',     // MULTIPLE IMAGES JSON
+        'images',
+        'primary_image',
         'size',
         'color',
         'category',
@@ -22,9 +23,10 @@ class Product extends Model
         'tag_ids',
     ];
 
-    protected $dates = ['deleted_at'];
+    protected $dates = [
+        'deleted_at',
+    ];
 
-    // Convert JSON <-> array automatically
     protected $casts = [
         'images' => 'array',
         'tag_ids' => 'array',

@@ -8,7 +8,11 @@ class CustomerProductsController extends Controller
 {
     public function index()
     {
-        $products = Product::all();
-        return view('customer.index', compact('products'));
+        $products = Product::latest()->get();
+
+        return view(
+            'customer.index',
+            compact('products')
+        );
     }
 }

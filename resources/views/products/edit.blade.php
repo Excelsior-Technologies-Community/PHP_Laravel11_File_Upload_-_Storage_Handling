@@ -1,217 +1,1174 @@
 @extends('layouts.admin')
 
 @section('content')
-<div class="container">
-    <h1>Edit Product</h1>
 
-    <form action="{{ route('products.update', $product) }}" method="POST" enctype="multipart/form-data" id="productForm">
+<div class="container">
+
+    <h1 class="mb-4">
+        Edit Product
+    </h1>
+
+
+    <form
+        id="editProductForm"
+        action="{{ route('products.update', $product) }}"
+        method="POST"
+        enctype="multipart/form-data"
+    >
+
         @csrf
+
         @method('PUT')
 
-        <!-- NAME -->
+
+        {{-- NAME --}}
+
         <div class="mb-3">
-            <label class="form-label fw-bold">Name</label>
-            <input type="text" name="name" class="form-control"
-                   value="{{ old('name', $product->name) }}" required>
+
+            <label class="form-label fw-bold">
+                Name
+            </label>
+
+            <input
+                type="text"
+                name="name"
+                class="form-control"
+                value="{{ old('name', $product->name) }}"
+                required
+            >
+
         </div>
 
-        <!-- DETAILS -->
+
+        {{-- DETAILS --}}
+
         <div class="mb-3">
-            <label class="form-label fw-bold">Details</label>
-            <textarea name="details" class="form-control" required>{{ old('details', $product->details) }}</textarea>
+
+            <label class="form-label fw-bold">
+                Details
+            </label>
+
+            <textarea
+                name="details"
+                class="form-control"
+                required
+            >{{ old('details', $product->details) }}</textarea>
+
         </div>
 
-        <!-- TAGS MULTIPLE SELECT (SELECT2) -->
+
+        {{-- TAGS --}}
+
         @php
+
             $selectedTags = $product->tag_ids
-                ? (is_array($product->tag_ids) ? $product->tag_ids : json_decode($product->tag_ids, true))
+                ? (
+                    is_array($product->tag_ids)
+                        ? $product->tag_ids
+                        : json_decode(
+                            $product->tag_ids,
+                            true
+                        )
+                )
                 : [];
+
         @endphp
 
-        <div class="mb-3">
-            <label class="form-label fw-bold">Select Tags</label>
 
-            <select name="tag_ids[]" id="tagSelect" class="form-select" multiple>
+        <div class="mb-3">
+
+            <label class="form-label fw-bold">
+                Select Tags
+            </label>
+
+            <select
+                name="tag_ids[]"
+                id="tagSelect"
+                class="form-select"
+                multiple
+            >
+
                 @foreach($tags as $tag)
-                    <option value="{{ $tag->id }}"
-                        {{ in_array($tag->id, $selectedTags) ? 'selected' : '' }}>
+
+                    <option
+                        value="{{ $tag->id }}"
+                        {{ in_array(
+                            $tag->id,
+                            $selectedTags
+                        ) ? 'selected' : '' }}
+                    >
                         {{ $tag->tag_name }}
                     </option>
+
                 @endforeach
+
             </select>
 
-            <small class="text-muted">You can select multiple tags</small>
         </div>
 
-        <!-- EXISTING IMAGES -->
+
+        {{-- EXISTING IMAGES --}}
+
         @php
-            $existingImages = $product->images 
-                ? (is_array($product->images) ? $product->images : json_decode($product->images, true))
+
+            $existingImages = $product->images
+                ? (
+                    is_array($product->images)
+                        ? $product->images
+                        : json_decode(
+                            $product->images,
+                            true
+                        )
+                )
                 : [];
+
         @endphp
 
-        <div class="mb-3">
-            <label class="form-label fw-bold">Existing Images</label>
-            <div class="d-flex flex-wrap">
-                @if(!empty($existingImages))
+
+        <div class="mb-4">
+
+            <label class="form-label fw-bold">
+                Existing Images
+            </label>
+
+
+            @if(!empty($existingImages))
+
+                <div class="d-flex flex-wrap">
+
                     @foreach($existingImages as $img)
+
                         @php
-                            $thumbPath = 'images/thumbnails/small/' . basename($img);
-                            if (!file_exists(public_path($thumbPath))) {
+
+                            $thumbPath =
+                                'images/thumbnails/small/' .
+                                basename($img);
+
+                            if (
+                                !file_exists(
+                                    public_path($thumbPath)
+                                )
+                            ) {
+
                                 $thumbPath = $img;
+
                             }
+
+                            $isPrimary =
+                                $product->primary_image === $img;
+
                         @endphp
-                        <div class="m-2 text-center">
-                            <img src="{{ asset($thumbPath) }}" width="80" class="rounded border mb-1" loading="lazy">
 
-                            <br>
-                            <input type="checkbox" name="delete_images[]" value="{{ $img }}">
-                            <label class="text-danger small">Delete</label>
+
+                        <div
+                            class="existing-image-card
+                            {{ $isPrimary
+                                ? 'primary-image-card'
+                                : '' }}"
+                        >
+
+                            <div class="position-relative">
+
+                                <img
+                                    src="{{ asset($thumbPath) }}"
+                                    class="existing-image"
+                                    alt="{{ $product->name }}"
+                                >
+
+
+                                @if($isPrimary)
+
+                                    <span class="primary-label">
+                                        ⭐ PRIMARY
+                                    </span>
+
+                                @endif
+
+                            </div>
+
+
+                            <div class="image-actions">
+
+                                {{-- PRIMARY --}}
+
+                                <label
+                                    class="
+                                    btn
+                                    btn-sm
+                                    {{ $isPrimary
+                                        ? 'btn-primary'
+                                        : 'btn-outline-primary' }}
+                                    "
+                                >
+
+                                    <input
+                                        type="radio"
+                                        name="primary_image"
+                                        value="{{ $img }}"
+                                        class="d-none"
+                                        {{ $isPrimary
+                                            ? 'checked'
+                                            : '' }}
+                                    >
+
+                                    ⭐ Primary
+
+                                </label>
+
+
+                                {{-- DOWNLOAD --}}
+
+                                <a
+                                    href="{{ route(
+                                        'products.image.download',
+                                        [
+                                            'filename' =>
+                                                basename($img)
+                                        ]
+                                    ) }}"
+                                    class="btn btn-sm btn-success"
+                                >
+                                    ⬇ Download
+                                </a>
+
+
+                                {{-- DELETE --}}
+
+                                <label
+                                    class="
+                                    btn
+                                    btn-sm
+                                    btn-outline-danger
+                                    "
+                                >
+
+                                    <input
+                                        type="checkbox"
+                                        name="delete_images[]"
+                                        value="{{ $img }}"
+                                        class="
+                                        delete-image-checkbox
+                                        d-none
+                                        "
+                                    >
+
+                                    🗑 Delete
+
+                                </label>
+
+                            </div>
+
                         </div>
+
                     @endforeach
-                @else
-                    <span class="text-muted">No Images Found</span>
-                @endif
 
-            </div>
-        </div>
-
-        <!-- ADD NEW IMAGES -->
-        <div class="mb-3">
-            <label class="form-label fw-bold">Add New Images</label>
-            
-            <div class="border rounded p-4 text-center" 
-                 style="border-style: dashed !important; cursor: pointer; background: #f8f9fa;"
-                 onclick="document.getElementById('productImages').click()">
-                <div class="py-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="#0d6efd" class="bi bi-cloud-upload mb-2" viewBox="0 0 16 16">
-                        <path d="M4.406 1.342A5.53 5.53 0 0 1 8 0c2.69 0 4.923 2 5.166 4.579C14.758 4.804 16 6.137 16 7.773 16 9.569 14.502 11 12.687 11H10a.5.5 0 0 1 0-1h2.688C13.979 10 15 8.988 15 7.773c0-1.216-1.02-2.228-2.313-2.228h-.5C10.876 4.725 9.674 3.5 8 3.5a5.5 5.5 0 0 0-4.578 2.684C2.877 7.336 1.5 9.037 1.5 11c0 .563.208 1.09.574 1.521L1 13.654A.5.5 0 0 1 1.5 14h11a.5.5 0 0 1 .5.5v1.637l-.574.466C12.552 16.91 13 17.37 13 18c0 .938-.804 1.785-1.79 1.861C10.049 20.141 8.5 19.5 8.5 19.5S6.964 20.141 5.793 19.861C4.74 19.785 4 18.938 4 18c0-.63.448-1.09 1.074-1.37L2.5 13.5v-1.637c0-.563.208-1.09.574-1.521L4 11.364c-.05.373-.096.737-.096 1.115 0 .553.448 1 1 1h6.5a.5.5 0 0 0 .5-.5c0-.558-.448-1-1-1H8.5a.5.5 0 0 1 0-1H12.5c.552 0 1 .448 1 1v2.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-2.5c0-.552.448-1 1-1h3.5a.5.5 0 0 0 0-1H5.5c-.552 0-1-.448-1-1V3.342zM8 4.5a.5.5 0 0 1 .5.5v2.5a.5.5 0 0 1-1 0V5a.5.5 0 0 1 .5-.5z"/>
-                    </svg>
-                    <p class="mb-1 fw-semibold">Click to upload more images</p>
-                    <small class="text-muted">JPG, PNG, GIF up to 2MB per image</small>
                 </div>
+
+            @else
+
+                <p class="text-muted">
+                    No Images Found
+                </p>
+
+            @endif
+
+        </div>
+
+
+        {{-- ADD NEW IMAGES --}}
+
+        <div class="mb-4">
+
+            <label class="form-label fw-bold">
+                Add New Images
+            </label>
+
+
+            <div
+                class="
+                border
+                rounded
+                p-4
+                text-center
+                upload-box
+                "
+                onclick="
+                    document
+                    .getElementById('productImages')
+                    .click()
+                "
+            >
+
+                <div class="py-3">
+
+                    <div style="font-size:40px;">
+                        📤
+                    </div>
+
+                    <p class="mb-1 fw-semibold">
+                        Click to upload more images
+                    </p>
+
+                    <small class="text-muted">
+                        JPG, PNG, GIF up to 2MB per image
+                    </small>
+
+                </div>
+
             </div>
-            
-            <input type="file" name="images[]" id="productImages" class="form-control d-none" multiple accept="image/*">
-            
-            <div id="imagePreviewContainer" class="d-flex flex-wrap mt-3"></div>
+
+
+            <input
+                type="file"
+                name="images[]"
+                id="productImages"
+                class="d-none"
+                multiple
+                accept="image/*"
+            >
+
+
+            {{-- New image primary index --}}
+
+            <input
+                type="hidden"
+                name="primary_image_index"
+                id="primaryImageIndex"
+                value=""
+            >
+
+
+            <div
+                id="imagePreviewContainer"
+                class="d-flex flex-wrap mt-3"
+            ></div>
+
         </div>
 
-        <!-- SIZE -->
+
+        {{-- SIZE --}}
+
         <div class="mb-3">
-            <label class="form-label fw-bold">Size</label>
-            <input type="text" name="size" class="form-control"
-                   value="{{ old('size', $product->size) }}" required>
+
+            <label class="form-label fw-bold">
+                Size
+            </label>
+
+            <input
+                type="text"
+                name="size"
+                class="form-control"
+                value="{{ old('size', $product->size) }}"
+                required
+            >
+
         </div>
 
-        <!-- COLOR -->
+
+        {{-- COLOR --}}
+
         <div class="mb-3">
-            <label class="form-label fw-bold">Color</label>
-            <input type="text" name="color" class="form-control"
-                   value="{{ old('color', $product->color) }}" required>
+
+            <label class="form-label fw-bold">
+                Color
+            </label>
+
+            <input
+                type="text"
+                name="color"
+                class="form-control"
+                value="{{ old('color', $product->color) }}"
+                required
+            >
+
         </div>
 
-        <!-- CATEGORY -->
+
+        {{-- CATEGORY --}}
+
         <div class="mb-3">
-            <label class="form-label fw-bold">Category</label>
-            <input type="text" name="category" class="form-control"
-                   value="{{ old('category', $product->category) }}" required>
+
+            <label class="form-label fw-bold">
+                Category
+            </label>
+
+            <input
+                type="text"
+                name="category"
+                class="form-control"
+                value="{{ old('category', $product->category) }}"
+                required
+            >
+
         </div>
 
-        <!-- PRICE -->
+
+        {{-- PRICE --}}
+
         <div class="mb-3">
-            <label class="form-label fw-bold">Price</label>
-            <input type="number" name="price" class="form-control"
-                   value="{{ old('price', $product->price) }}" required>
+
+            <label class="form-label fw-bold">
+                Price
+            </label>
+
+            <input
+                type="number"
+                name="price"
+                class="form-control"
+                value="{{ old('price', $product->price) }}"
+                min="0"
+                required
+            >
+
         </div>
 
-        <!-- SUBMIT -->
-        <button type="submit" class="btn btn-primary">Update Product</button>
-        <a href="{{ route('products.index') }}" class="btn btn-secondary mt-3">Back</a>
+
+        {{-- BUTTONS --}}
+
+        <button
+            type="submit"
+            class="btn btn-primary"
+        >
+            Update Product
+        </button>
+
+
+        <a
+            href="{{ route('products.index') }}"
+            class="btn btn-secondary"
+        >
+            Back
+        </a>
 
     </form>
+
 </div>
+
 @endsection
 
+
 @push('styles')
+
 <style>
-    .image-preview-item {
-        position: relative;
-        width: 120px;
-        height: 120px;
-        margin: 5px;
-        border-radius: 8px;
-        overflow: hidden;
-        border: 2px solid #dee2e6;
-    }
-    
-    .image-preview-item img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    
-    .image-preview-item .remove-btn {
-        position: absolute;
-        top: 2px;
-        right: 2px;
-        background: rgba(220, 53, 69, 0.9);
-        color: white;
-        border: none;
-        border-radius: 50%;
-        width: 24px;
-        height: 24px;
-        cursor: pointer;
-        font-size: 14px;
-        line-height: 1;
-    }
+
+.upload-box {
+
+    border-style: dashed !important;
+
+    cursor: pointer;
+
+    background: #f8f9fa;
+
+    transition: 0.2s;
+
+}
+
+.upload-box:hover {
+
+    background: #e9ecef;
+
+}
+
+
+.existing-image-card {
+
+    width: 180px;
+
+    margin: 8px;
+
+    padding: 8px;
+
+    border: 2px solid #dee2e6;
+
+    border-radius: 8px;
+
+    background: white;
+
+    transition: 0.2s;
+
+}
+
+
+.primary-image-card {
+
+    border: 3px solid #0d6efd;
+
+}
+
+
+.existing-image {
+
+    width: 160px;
+
+    height: 120px;
+
+    object-fit: cover;
+
+    border-radius: 6px;
+
+}
+
+
+.primary-label {
+
+    position: absolute;
+
+    top: 5px;
+
+    left: 5px;
+
+    background: #0d6efd;
+
+    color: white;
+
+    padding: 3px 7px;
+
+    border-radius: 4px;
+
+    font-size: 11px;
+
+}
+
+
+.image-actions {
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 5px;
+
+    margin-top: 8px;
+
+}
+
+
+.image-preview-item {
+
+    position: relative;
+
+    width: 150px;
+
+    height: 175px;
+
+    margin: 5px;
+
+    border-radius: 8px;
+
+    overflow: hidden;
+
+    border: 2px solid #dee2e6;
+
+    background: white;
+
+}
+
+
+.image-preview-item.primary {
+
+    border: 3px solid #0d6efd;
+
+}
+
+
+.image-preview-item img {
+
+    width: 100%;
+
+    height: 130px;
+
+    object-fit: cover;
+
+}
+
+
+.primary-badge {
+
+    position: absolute;
+
+    top: 5px;
+
+    left: 5px;
+
+    background: #0d6efd;
+
+    color: white;
+
+    padding: 3px 7px;
+
+    border-radius: 4px;
+
+    font-size: 11px;
+
+    z-index: 2;
+
+}
+
+
+.remove-btn {
+
+    position: absolute;
+
+    top: 5px;
+
+    right: 5px;
+
+    background: #dc3545;
+
+    color: white;
+
+    border: none;
+
+    border-radius: 50%;
+
+    width: 25px;
+
+    height: 25px;
+
+    cursor: pointer;
+
+    z-index: 2;
+
+}
+
+
+.preview-actions {
+
+    height: 42px;
+
+    display: flex;
+
+    justify-content: center;
+
+    align-items: center;
+
+}
+
 </style>
+
 @endpush
 
+
 @push('scripts')
+
 <script>
-$(document).ready(function() {
+
+$(document).ready(function () {
+
+    /*
+    |--------------------------------------------------------------------------
+    | Variables
+    |--------------------------------------------------------------------------
+    */
+
     let selectedFiles = [];
-    
-    $('#productImages').on('change', function(e) {
-        let files = Array.from(e.target.files);
-        
-        files.forEach(function(file) {
-            if (!file.type.startsWith('image/')) return;
-            
-            let reader = new FileReader();
-            reader.onload = function(e) {
-                selectedFiles.push(file);
-                showPreview(e.target.result, file.name);
-            };
-            reader.readAsDataURL(file);
-        });
-        
-        $(this).val('');
-    });
-    
-    function showPreview(src, filename) {
-        let div = document.createElement('div');
-        div.className = 'image-preview-item';
+
+    let primaryNewImageIndex = null;
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Existing Image Primary Selection
+    |--------------------------------------------------------------------------
+    */
+
+    $(document).on(
+        'change',
+        'input[name="primary_image"]',
+        function () {
+
+            $('.existing-image-card')
+                .removeClass(
+                    'primary-image-card'
+                );
+
+
+            $(this)
+                .closest(
+                    '.existing-image-card'
+                )
+                .addClass(
+                    'primary-image-card'
+                );
+
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Existing Image Delete
+    |--------------------------------------------------------------------------
+    */
+
+    $(document).on(
+        'change',
+        '.delete-image-checkbox',
+        function () {
+
+            const card =
+                $(this).closest(
+                    '.existing-image-card'
+                );
+
+
+            if ($(this).is(':checked')) {
+
+                card.css(
+                    'opacity',
+                    '0.45'
+                );
+
+            } else {
+
+                card.css(
+                    'opacity',
+                    '1'
+                );
+
+            }
+
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | New Image Upload
+    |--------------------------------------------------------------------------
+    */
+
+    $('#productImages').on(
+        'change',
+        function (e) {
+
+            const files =
+                Array.from(
+                    e.target.files
+                );
+
+
+            files.forEach(
+                function (file) {
+
+                    if (
+                        !file.type
+                            .startsWith('image/')
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    selectedFiles.push(file);
+
+
+                    const index =
+                        selectedFiles.length - 1;
+
+
+                    const reader =
+                        new FileReader();
+
+
+                    reader.onload =
+                        function (event) {
+
+                            showPreview(
+                                event.target.result,
+                                file.name,
+                                index
+                            );
+
+                        };
+
+
+                    reader.readAsDataURL(
+                        file
+                    );
+
+                }
+            );
+
+
+            /*
+            | Keep input empty while
+            | selecting multiple times.
+            |
+            | Before form submit we restore
+            | all files using DataTransfer.
+            */
+
+            $(this).val('');
+
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Show New Image Preview
+    |--------------------------------------------------------------------------
+    */
+
+    function showPreview(
+        src,
+        filename,
+        index
+    ) {
+
+        const div =
+            document.createElement(
+                'div'
+            );
+
+
+        div.className =
+            'image-preview-item';
+
+
+        div.dataset.index =
+            index;
+
+
         div.innerHTML = `
-            <img src="${src}" alt="${filename}">
-            <button type="button" class="remove-btn">&times;</button>
+
+            <span
+                class="primary-badge"
+                style="display:none;"
+            >
+                PRIMARY
+            </span>
+
+
+            <img
+                src="${src}"
+                alt="${filename}"
+            >
+
+
+            <button
+                type="button"
+                class="remove-btn"
+            >
+                &times;
+            </button>
+
+
+            <div class="preview-actions">
+
+                <button
+                    type="button"
+                    class="
+                    btn
+                    btn-sm
+                    btn-outline-primary
+                    primary-btn
+                    "
+                >
+                    ⭐ Primary
+                </button>
+
+            </div>
+
         `;
-        
-        div.querySelector('.remove-btn').addEventListener('click', function() {
-            div.remove();
-            selectedFiles = selectedFiles.filter(f => f.name !== filename);
-        });
-        
-        document.getElementById('imagePreviewContainer').appendChild(div);
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Primary Button
+        |--------------------------------------------------------------------------
+        */
+
+        div.querySelector(
+            '.primary-btn'
+        ).addEventListener(
+            'click',
+            function () {
+
+                setNewPrimary(index);
+
+            }
+        );
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Remove Button
+        |--------------------------------------------------------------------------
+        */
+
+        div.querySelector(
+            '.remove-btn'
+        ).addEventListener(
+            'click',
+            function () {
+
+                selectedFiles.splice(
+                    index,
+                    1
+                );
+
+
+                div.remove();
+
+
+                rebuildIndexes();
+
+            }
+        );
+
+
+        document
+            .getElementById(
+                'imagePreviewContainer'
+            )
+            .appendChild(div);
+
     }
-    
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Set New Image as Primary
+    |--------------------------------------------------------------------------
+    */
+
+    function setNewPrimary(index) {
+
+        primaryNewImageIndex =
+            index;
+
+
+        $('#primaryImageIndex')
+            .val(index);
+
+
+        document
+            .querySelectorAll(
+                '.image-preview-item'
+            )
+            .forEach(
+                function (item) {
+
+                    item.classList.remove(
+                        'primary'
+                    );
+
+
+                    item.querySelector(
+                        '.primary-badge'
+                    ).style.display =
+                        'none';
+
+
+                    item.querySelector(
+                        '.primary-btn'
+                    ).classList.remove(
+                        'btn-primary'
+                    );
+
+
+                    item.querySelector(
+                        '.primary-btn'
+                    ).classList.add(
+                        'btn-outline-primary'
+                    );
+
+                }
+            );
+
+
+        const selected =
+            document.querySelector(
+                `.image-preview-item[data-index="${index}"]`
+            );
+
+
+        if (selected) {
+
+            selected.classList.add(
+                'primary'
+            );
+
+
+            selected.querySelector(
+                '.primary-badge'
+            ).style.display =
+                'block';
+
+
+            selected.querySelector(
+                '.primary-btn'
+            ).classList.remove(
+                'btn-outline-primary'
+            );
+
+
+            selected.querySelector(
+                '.primary-btn'
+            ).classList.add(
+                'btn-primary'
+            );
+
+        }
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Rebuild New Image Indexes
+    |--------------------------------------------------------------------------
+    */
+
+    function rebuildIndexes() {
+
+        const items =
+            document.querySelectorAll(
+                '.image-preview-item'
+            );
+
+
+        items.forEach(
+            function (item, index) {
+
+                item.dataset.index =
+                    index;
+
+            }
+        );
+
+
+        /*
+        | No files remaining
+        */
+
+        if (
+            selectedFiles.length === 0
+        ) {
+
+            primaryNewImageIndex =
+                null;
+
+
+            $('#primaryImageIndex')
+                .val('');
+
+
+            return;
+
+        }
+
+
+        /*
+        | If selected primary was deleted,
+        | select first remaining image.
+        */
+
+        if (
+            primaryNewImageIndex === null ||
+            primaryNewImageIndex >=
+                selectedFiles.length
+        ) {
+
+            primaryNewImageIndex =
+                0;
+
+        }
+
+
+        setNewPrimary(
+            primaryNewImageIndex
+        );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | IMPORTANT:
+    |
+    | Restore selected files into
+    | the actual file input before
+    | submitting the form.
+    |--------------------------------------------------------------------------
+    */
+
+    $('#editProductForm').on(
+        'submit',
+        function () {
+
+            const fileInput =
+                document.getElementById(
+                    'productImages'
+                );
+
+
+            const dataTransfer =
+                new DataTransfer();
+
+
+            selectedFiles.forEach(
+                function (file) {
+
+                    dataTransfer.items.add(
+                        file
+                    );
+
+                }
+            );
+
+
+            fileInput.files =
+                dataTransfer.files;
+
+
+            /*
+            | Make sure primary index
+            | is submitted.
+            */
+
+            if (
+                primaryNewImageIndex !== null
+            ) {
+
+                $('#primaryImageIndex')
+                    .val(
+                        primaryNewImageIndex
+                    );
+
+            }
+
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Select2
+    |--------------------------------------------------------------------------
+    */
+
     $('#tagSelect').select2({
-        placeholder: "Select Tags",
-        allowClear: true,
-        closeOnSelect: true,
-        width: "100%"
+
+        placeholder:
+            'Select Tags',
+
+        allowClear:
+            true,
+
+        closeOnSelect:
+            true,
+
+        width:
+            '100%'
+
     });
+
 });
+
 </script>
+
 @endpush
