@@ -7,6 +7,7 @@ use App\Models\Tag;
 use Illuminate\Http\Request;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProductController extends Controller
 {
@@ -19,67 +20,85 @@ class ProductController extends Controller
      * - Medium thumbnail
      * - Large thumbnail
      */
-private function processImage($image, $filename)
-{
-    $originalPath = public_path('images/' . $filename);
-    $thumbnailDir = public_path('images/thumbnails');
+    private function processImage($image, $filename)
+    {
+        $originalPath = public_path('images/' . $filename);
+        $thumbnailDir = public_path('images/thumbnails');
 
-    $manager = new ImageManager(new Driver());
+        $manager = new ImageManager(new Driver());
 
-    // Intervention Image v3
-    $img = $manager->read($image->getRealPath());
+        $img = $manager->read($image->getRealPath());
 
-    // Limit original image to maximum 1200px
-    if ($img->width() > 1200 || $img->height() > 1200) {
-        $img->scaleDown(width: 1200, height: 1200);
-    }
-
-    // Save original image
-    $img->save($originalPath, quality: 80);
-
-    // Create thumbnails
-    $sizes = [
-        'small' => 150,
-        'medium' => 400,
-        'large' => 800,
-    ];
-
-    foreach ($sizes as $size => $width) {
-
-        $dir = $thumbnailDir . '/' . $size;
-
-        if (!file_exists($dir)) {
-            mkdir($dir, 0755, true);
+        // Limit original image to maximum 1200px
+        if ($img->width() > 1200 || $img->height() > 1200) {
+            $img->scaleDown(width: 1200, height: 1200);
         }
 
-        $thumb = $manager->read($originalPath);
+        // Save original image
+        $img->save($originalPath, quality: 80);
 
-        $thumb->scaleDown(width: $width);
+        // Create thumbnails
+        $sizes = [
+            'small' => 150,
+            'medium' => 400,
+            'large' => 800,
+        ];
 
-        $thumb->save(
-            $dir . '/' . $filename,
-            quality: 80
-        );
+        foreach ($sizes as $size => $width) {
+
+            $dir = $thumbnailDir . '/' . $size;
+
+            if (!file_exists($dir)) {
+                mkdir($dir, 0755, true);
+            }
+
+            $thumb = $manager->read($originalPath);
+
+            $thumb->scaleDown(width: $width);
+
+            $thumb->save(
+                $dir . '/' . $filename,
+                quality: 80
+            );
+        }
+
+        return 'images/' . $filename;
     }
 
-    return 'images/' . $filename;
-}
 
     /**
-     * Show all products.
+     * Show all active products.
+     *
+     * Features:
+     * - Search
+     * - Category filter
+     * - Color filter
+     * - Size filter
+     * - Minimum price
+     * - Maximum price
+     * - Sorting
+     * - Per page
+     * - Pagination
      */
     public function index(Request $request)
     {
-        $query = Product::where('status', '!=', 'deleted');
+        $query = Product::query()
+            ->whereNull('deleted_at')
+            ->where('status', '!=', 'deleted');
+
+        /*
+        |--------------------------------------------------------------------------
+        | SEARCH
+        |--------------------------------------------------------------------------
+        */
 
         if ($request->filled('keyword')) {
 
-            $keyword = $request->keyword;
+            $keyword = trim($request->keyword);
 
             if (is_numeric($keyword)) {
 
                 $query->where('price', (float) $keyword);
-
             } else {
 
                 $query->where(function ($q) use ($keyword) {
@@ -90,32 +109,630 @@ private function processImage($image, $filename)
                         ->orWhere('size', 'like', "%{$keyword}%")
                         ->orWhere('details', 'like', "%{$keyword}%")
                         ->orWhere('price', 'like', "%{$keyword}%");
-
                 });
             }
         }
 
-        if (
-            $request->filled('sort') &&
-            in_array($request->sort, ['price-asc', 'price-desc'])
-        ) {
 
-            $query->orderBy(
-                'price',
-                $request->sort === 'price-asc'
-                    ? 'asc'
-                    : 'desc'
+        /*
+        |--------------------------------------------------------------------------
+        | CATEGORY FILTER
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('category')) {
+
+            $query->where(
+                'category',
+                $request->category
             );
-
-        } else {
-
-            $query->latest();
         }
 
-        $products = $query->paginate(2);
 
-        return view('products.index', compact('products'));
+        /*
+        |--------------------------------------------------------------------------
+        | COLOR FILTER
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('color')) {
+
+            $query->where(
+                'color',
+                $request->color
+            );
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | SIZE FILTER
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('size')) {
+
+            $query->where(
+                'size',
+                $request->size
+            );
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | MINIMUM PRICE
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('min_price')) {
+
+            $query->where(
+                'price',
+                '>=',
+                (float) $request->min_price
+            );
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | MAXIMUM PRICE
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('max_price')) {
+
+            $query->where(
+                'price',
+                '<=',
+                (float) $request->max_price
+            );
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | SORTING
+        |--------------------------------------------------------------------------
+        */
+
+        $allowedSorts = [
+            'price-asc',
+            'price-desc',
+            'name-asc',
+            'name-desc',
+            'latest',
+            'oldest',
+        ];
+
+        $sort = $request->get('sort', 'oldest');
+
+        if (!in_array($sort, $allowedSorts)) {
+            $sort = 'latest';
+        }
+
+        switch ($sort) {
+
+            case 'price-asc':
+                $query->orderBy('price', 'asc');
+                break;
+
+            case 'price-desc':
+                $query->orderBy('price', 'desc');
+                break;
+
+            case 'name-asc':
+                $query->orderBy('name', 'asc');
+                break;
+
+            case 'name-desc':
+                $query->orderBy('name', 'desc');
+                break;
+
+            case 'oldest':
+                $query->oldest();
+                break;
+
+            default:
+                $query->latest();
+                break;
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | PER PAGE
+        |--------------------------------------------------------------------------
+        */
+
+        $allowedPerPage = [
+            5,
+            10,
+            25,
+            50,
+        ];
+
+        $perPage = (int) $request->get('per_page', 5);
+
+        if (!in_array($perPage, $allowedPerPage)) {
+            $perPage = 5;
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | PAGINATION
+        |--------------------------------------------------------------------------
+        */
+
+        $products = $query
+            ->paginate($perPage)
+            ->withQueryString();
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | FILTER OPTIONS
+        |--------------------------------------------------------------------------
+        */
+
+        $categories = Product::query()
+            ->whereNull('deleted_at')
+            ->where('status', '!=', 'deleted')
+            ->whereNotNull('category')
+            ->where('category', '!=', '')
+            ->distinct()
+            ->orderBy('category')
+            ->pluck('category');
+
+        $colors = Product::query()
+            ->whereNull('deleted_at')
+            ->where('status', '!=', 'deleted')
+            ->whereNotNull('color')
+            ->where('color', '!=', '')
+            ->distinct()
+            ->orderBy('color')
+            ->pluck('color');
+
+        $sizes = Product::query()
+            ->whereNull('deleted_at')
+            ->where('status', '!=', 'deleted')
+            ->whereNotNull('size')
+            ->where('size', '!=', '')
+            ->distinct()
+            ->orderBy('size')
+            ->pluck('size');
+
+
+        return view(
+            'products.index',
+            compact(
+                'products',
+                'categories',
+                'colors',
+                'sizes',
+                'perPage'
+            )
+        );
     }
+
+
+    /**
+     * Export products to CSV.
+     *
+     * Uses the same filters as the product listing.
+     */
+    public function exportCsv(Request $request): StreamedResponse
+    {
+        $query = Product::query()
+            ->whereNull('deleted_at')
+            ->where('status', '!=', 'deleted');
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | SEARCH
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('keyword')) {
+
+            $keyword = trim($request->keyword);
+
+            if (is_numeric($keyword)) {
+
+                $query->where(
+                    'price',
+                    (float) $keyword
+                );
+            } else {
+
+                $query->where(function ($q) use ($keyword) {
+
+                    $q->where('name', 'like', "%{$keyword}%")
+                        ->orWhere('category', 'like', "%{$keyword}%")
+                        ->orWhere('color', 'like', "%{$keyword}%")
+                        ->orWhere('size', 'like', "%{$keyword}%")
+                        ->orWhere('details', 'like', "%{$keyword}%")
+                        ->orWhere('price', 'like', "%{$keyword}%");
+                });
+            }
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | ADVANCED FILTERS
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('category')) {
+
+            $query->where(
+                'category',
+                $request->category
+            );
+        }
+
+        if ($request->filled('color')) {
+
+            $query->where(
+                'color',
+                $request->color
+            );
+        }
+
+        if ($request->filled('size')) {
+
+            $query->where(
+                'size',
+                $request->size
+            );
+        }
+
+        if ($request->filled('min_price')) {
+
+            $query->where(
+                'price',
+                '>=',
+                (float) $request->min_price
+            );
+        }
+
+        if ($request->filled('max_price')) {
+
+            $query->where(
+                'price',
+                '<=',
+                (float) $request->max_price
+            );
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | SORT
+        |--------------------------------------------------------------------------
+        */
+
+        $allowedSorts = [
+            'price-asc',
+            'price-desc',
+            'name-asc',
+            'name-desc',
+            'latest',
+            'oldest',
+        ];
+
+        $sort = $request->get(
+            'sort',
+            'latest'
+        );
+
+        if (!in_array($sort, $allowedSorts)) {
+            $sort = 'latest';
+        }
+
+        switch ($sort) {
+
+            case 'price-asc':
+                $query->orderBy('price', 'asc');
+                break;
+
+            case 'price-desc':
+                $query->orderBy('price', 'desc');
+                break;
+
+            case 'name-asc':
+                $query->orderBy('name', 'asc');
+                break;
+
+            case 'name-desc':
+                $query->orderBy('name', 'desc');
+                break;
+
+            case 'oldest':
+                $query->oldest();
+                break;
+
+            default:
+                $query->latest();
+                break;
+        }
+
+
+        $products = $query->get();
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | CSV DOWNLOAD
+        |--------------------------------------------------------------------------
+        */
+
+        $filename =
+            'products_' .
+            now()->format('Y-m-d_H-i-s') .
+            '.csv';
+
+
+        return response()->streamDownload(
+
+            function () use ($products) {
+
+                $handle = fopen(
+                    'php://output',
+                    'w'
+                );
+
+                /*
+                | CSV Header
+                */
+
+                fputcsv($handle, [
+                    'ID',
+                    'Name',
+                    'Details',
+                    'Category',
+                    'Color',
+                    'Size',
+                    'Price',
+                    'Primary Image',
+                    'Created At',
+                ]);
+
+
+                /*
+                | CSV Rows
+                */
+
+                foreach ($products as $product) {
+
+                    fputcsv($handle, [
+
+                        $product->id,
+
+                        $product->name,
+
+                        $product->details,
+
+                        $product->category,
+
+                        $product->color,
+
+                        $product->size,
+
+                        $product->price,
+
+                        $product->primary_image
+                            ? basename(
+                                $product->primary_image
+                            )
+                            : '',
+
+                        $product->created_at
+                            ? $product->created_at
+                            ->format(
+                                'Y-m-d H:i:s'
+                            )
+                            : '',
+
+                    ]);
+                }
+
+                fclose($handle);
+            },
+
+            $filename,
+
+            [
+                'Content-Type' =>
+                'text/csv; charset=UTF-8',
+            ]
+        );
+    }
+
+
+    /**
+     * Recycle Bin.
+     *
+     * Show deleted products.
+     */
+    public function trash(Request $request)
+    {
+        $query = Product::onlyTrashed()
+            ->where(function ($q) {
+
+                $q->where('status', 'deleted')
+                    ->orWhereNull('status');
+            });
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | SEARCH DELETED PRODUCTS
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('keyword')) {
+
+            $keyword = trim(
+                $request->keyword
+            );
+
+            $query->where(function ($q) use ($keyword) {
+
+                $q->where(
+                    'name',
+                    'like',
+                    "%{$keyword}%"
+                )
+                    ->orWhere(
+                        'category',
+                        'like',
+                        "%{$keyword}%"
+                    )
+                    ->orWhere(
+                        'color',
+                        'like',
+                        "%{$keyword}%"
+                    )
+                    ->orWhere(
+                        'size',
+                        'like',
+                        "%{$keyword}%"
+                    )
+                    ->orWhere(
+                        'details',
+                        'like',
+                        "%{$keyword}%"
+                    );
+            });
+        }
+
+
+        $products = $query
+            ->latest('deleted_at')
+            ->paginate(10)
+            ->withQueryString();
+
+
+        return view(
+            'products.trash',
+            compact('products')
+        );
+    }
+
+
+    /**
+     * Restore deleted product.
+     */
+    public function restore($id)
+    {
+        $product = Product::onlyTrashed()
+            ->findOrFail($id);
+
+        $product->restore();
+
+        $product->update([
+            'status' => 'active',
+        ]);
+
+        return redirect()
+            ->route('products.trash')
+            ->with(
+                'success',
+                'Product restored successfully.'
+            );
+    }
+
+
+    /**
+     * Permanently delete product.
+     */
+    public function forceDelete($id)
+    {
+        $product = Product::onlyTrashed()
+            ->findOrFail($id);
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Delete Product Images
+        |--------------------------------------------------------------------------
+        */
+
+        $images = $product->images ?? [];
+
+        if (is_string($images)) {
+
+            $images = json_decode(
+                $images,
+                true
+            ) ?? [];
+        }
+
+
+        foreach ($images as $image) {
+
+            $filename = basename($image);
+
+            /*
+            | Original
+            */
+
+            $originalPath =
+                public_path(
+                    'images/' . $filename
+                );
+
+            if (file_exists($originalPath)) {
+                unlink($originalPath);
+            }
+
+
+            /*
+            | Thumbnails
+            */
+
+            foreach (
+                ['small', 'medium', 'large']
+                as $size
+            ) {
+
+                $thumbnailPath =
+                    public_path(
+                        'images/thumbnails/' .
+                            $size .
+                            '/' .
+                            $filename
+                    );
+
+                if (file_exists($thumbnailPath)) {
+                    unlink($thumbnailPath);
+                }
+            }
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Force Delete Database Record
+        |--------------------------------------------------------------------------
+        */
+
+        $product->forceDelete();
+
+
+        return redirect()
+            ->route('products.trash')
+            ->with(
+                'success',
+                'Product permanently deleted.'
+            );
+    }
+
 
     /**
      * Show create form.
@@ -130,40 +747,62 @@ private function processImage($image, $filename)
         );
     }
 
+
     /**
      * Store product.
      */
     public function store(Request $request)
     {
         $request->validate([
-            'name' => 'required',
-            'details' => 'required',
-            'size' => 'required',
-            'color' => 'required',
-            'category' => 'required',
-            'price' => 'required|numeric',
 
-            'images.*' => 'nullable|image|max:2048',
+            'name' =>
+            'required',
 
-            'temp_images' => 'nullable|array',
+            'details' =>
+            'required',
 
-            'tag_ids' => 'nullable|array',
+            'size' =>
+            'required',
 
-            // New functionality
-            'primary_image_index' => 'nullable|integer|min:0',
+            'color' =>
+            'required',
+
+            'category' =>
+            'required',
+
+            'price' =>
+            'required|numeric',
+
+            'images.*' =>
+            'nullable|image|max:2048',
+
+            'temp_images' =>
+            'nullable|array',
+
+            'tag_ids' =>
+            'nullable|array',
+
+            'primary_image_index' =>
+            'nullable|integer|min:0',
+
         ]);
+
 
         $imagePaths = [];
 
+
         /*
         |--------------------------------------------------------------------------
-        | Upload new images
+        | Upload New Images
         |--------------------------------------------------------------------------
         */
 
         if ($request->hasFile('images')) {
 
-            foreach ($request->file('images') as $image) {
+            foreach (
+                $request->file('images')
+                as $image
+            ) {
 
                 $imageName =
                     time() .
@@ -172,39 +811,72 @@ private function processImage($image, $filename)
                     '.' .
                     $image->getClientOriginalExtension();
 
-                $imagePaths[] = $this->processImage(
-                    $image,
-                    $imageName
-                );
+
+                $imagePaths[] =
+                    $this->processImage(
+                        $image,
+                        $imageName
+                    );
             }
         }
 
+
         /*
         |--------------------------------------------------------------------------
-        | Move temporary images to final storage
+        | Move Temporary Images
         |--------------------------------------------------------------------------
         */
 
         if ($request->filled('temp_images')) {
 
-            $tempDir = public_path('images/temp');
-            $finalDir = public_path('images');
-            $thumbnailDir = public_path('images/thumbnails');
+            $tempDir =
+                public_path(
+                    'images/temp'
+                );
 
-            foreach ($request->temp_images as $tempPath) {
+            $finalDir =
+                public_path(
+                    'images'
+                );
 
-                $filename = basename($tempPath);
+            $thumbnailDir =
+                public_path(
+                    'images/thumbnails'
+                );
 
-                $source = $tempDir . '/' . $filename;
-                $destination = $finalDir . '/' . $filename;
+
+            foreach (
+                $request->temp_images
+                as $tempPath
+            ) {
+
+                $filename =
+                    basename($tempPath);
+
+                $source =
+                    $tempDir .
+                    '/' .
+                    $filename;
+
+                $destination =
+                    $finalDir .
+                    '/' .
+                    $filename;
+
 
                 if (file_exists($source)) {
 
-                    rename($source, $destination);
-
-                    $manager = new ImageManager(
-                        new Driver()
+                    rename(
+                        $source,
+                        $destination
                     );
+
+
+                    $manager =
+                        new ImageManager(
+                            new Driver()
+                        );
+
 
                     $sizes = [
                         'small' => 150,
@@ -212,32 +884,54 @@ private function processImage($image, $filename)
                         'large' => 800,
                     ];
 
-                    foreach ($sizes as $size => $width) {
 
-                        $dir = $thumbnailDir . '/' . $size;
+                    foreach (
+                        $sizes as $size => $width
+                    ) {
+
+                        $dir =
+                            $thumbnailDir .
+                            '/' .
+                            $size;
+
 
                         if (!file_exists($dir)) {
-                            mkdir($dir, 0755, true);
+
+                            mkdir(
+                                $dir,
+                                0755,
+                                true
+                            );
                         }
 
-                        $thumb = $manager->decodePath(
-                            $destination
-                        );
+
+                        $thumb =
+                            $manager->decodePath(
+                                $destination
+                            );
+
 
                         $thumb->scaleDown(
                             width: $width
                         );
 
+
                         $thumb->save(
-                            $dir . '/' . $filename,
+                            $dir .
+                                '/' .
+                                $filename,
                             quality: 80
                         );
                     }
 
-                    $imagePaths[] = 'images/' . $filename;
+
+                    $imagePaths[] =
+                        'images/' .
+                        $filename;
                 }
             }
         }
+
 
         /*
         |--------------------------------------------------------------------------
@@ -247,25 +941,26 @@ private function processImage($image, $filename)
 
         $primaryImage = null;
 
+
         if (
-            $request->filled('primary_image_index') &&
+            $request->filled(
+                'primary_image_index'
+            ) &&
             isset(
-                $imagePaths[
-                    (int) $request->primary_image_index
-                ]
+                $imagePaths[(int)
+                    $request->primary_image_index]
             )
         ) {
 
             $primaryImage =
-                $imagePaths[
-                    (int) $request->primary_image_index
-                ];
-
+                $imagePaths[(int)
+                    $request->primary_image_index];
         } elseif (!empty($imagePaths)) {
 
-            // Automatically use first image if no image was selected.
-            $primaryImage = $imagePaths[0];
+            $primaryImage =
+                $imagePaths[0];
         }
+
 
         /*
         |--------------------------------------------------------------------------
@@ -274,20 +969,36 @@ private function processImage($image, $filename)
         */
 
         Product::create([
-            'name' => $request->name,
-            'details' => $request->details,
 
-            'images' => $imagePaths,
+            'name' =>
+            $request->name,
 
-            // New functionality
-            'primary_image' => $primaryImage,
+            'details' =>
+            $request->details,
 
-            'size' => $request->size,
-            'color' => $request->color,
-            'category' => $request->category,
-            'price' => $request->price,
-            'tag_ids' => $request->tag_ids,
+            'images' =>
+            $imagePaths,
+
+            'primary_image' =>
+            $primaryImage,
+
+            'size' =>
+            $request->size,
+
+            'color' =>
+            $request->color,
+
+            'category' =>
+            $request->category,
+
+            'price' =>
+            $request->price,
+
+            'tag_ids' =>
+            $request->tag_ids,
+
         ]);
+
 
         return redirect()
             ->route('products.index')
@@ -296,6 +1007,7 @@ private function processImage($image, $filename)
                 'Product created successfully.'
             );
     }
+
 
     /**
      * Edit form.
@@ -306,9 +1018,13 @@ private function processImage($image, $filename)
 
         return view(
             'products.edit',
-            compact('product', 'tags')
+            compact(
+                'product',
+                'tags'
+            )
         );
     }
+
 
     /**
      * Update product.
@@ -319,25 +1035,46 @@ private function processImage($image, $filename)
     ) {
 
         $request->validate([
-            'name' => 'required',
-            'details' => 'required',
-            'size' => 'required',
-            'color' => 'required',
-            'category' => 'required',
-            'price' => 'required|numeric',
 
-            'images.*' => 'nullable|image|max:2048',
+            'name' =>
+            'required',
 
-            'temp_images' => 'nullable|array',
+            'details' =>
+            'required',
 
-            'tag_ids' => 'nullable|array',
+            'size' =>
+            'required',
 
-            // New functionality
-            'primary_image' => 'nullable|string',
-            'primary_image_index' => 'nullable|integer|min:0',
+            'color' =>
+            'required',
+
+            'category' =>
+            'required',
+
+            'price' =>
+            'required|numeric',
+
+            'images.*' =>
+            'nullable|image|max:2048',
+
+            'temp_images' =>
+            'nullable|array',
+
+            'tag_ids' =>
+            'nullable|array',
+
+            'primary_image' =>
+            'nullable|string',
+
+            'primary_image_index' =>
+            'nullable|integer|min:0',
+
         ]);
 
-        $finalImages = $product->images ?? [];
+
+        $finalImages =
+            $product->images ?? [];
+
 
         /*
         |--------------------------------------------------------------------------
@@ -347,16 +1084,32 @@ private function processImage($image, $filename)
 
         if ($request->has('delete_images')) {
 
-            foreach ($request->delete_images as $delImg) {
+            foreach (
+                $request->delete_images
+                as $delImg
+            ) {
 
-                if (file_exists(public_path($delImg))) {
-                    unlink(public_path($delImg));
+                if (
+                    file_exists(
+                        public_path($delImg)
+                    )
+                ) {
+
+                    unlink(
+                        public_path($delImg)
+                    );
                 }
 
-                $filename = basename($delImg);
+
+                $filename =
+                    basename($delImg);
+
 
                 $thumbnailDir =
-                    public_path('images/thumbnails');
+                    public_path(
+                        'images/thumbnails'
+                    );
+
 
                 foreach (
                     ['small', 'medium', 'large']
@@ -370,19 +1123,31 @@ private function processImage($image, $filename)
                         '/' .
                         $filename;
 
-                    if (file_exists($thumbPath)) {
-                        unlink($thumbPath);
+
+                    if (
+                        file_exists(
+                            $thumbPath
+                        )
+                    ) {
+
+                        unlink(
+                            $thumbPath
+                        );
                     }
                 }
 
-                $finalImages = array_values(
-                    array_filter(
-                        $finalImages,
-                        fn ($img) => $img !== $delImg
-                    )
-                );
+
+                $finalImages =
+                    array_values(
+                        array_filter(
+                            $finalImages,
+                            fn($img) =>
+                            $img !== $delImg
+                        )
+                    );
             }
         }
+
 
         /*
         |--------------------------------------------------------------------------
@@ -392,9 +1157,13 @@ private function processImage($image, $filename)
 
         $newImagePaths = [];
 
+
         if ($request->hasFile('images')) {
 
-            foreach ($request->file('images') as $image) {
+            foreach (
+                $request->file('images')
+                as $image
+            ) {
 
                 $imageName =
                     time() .
@@ -403,6 +1172,7 @@ private function processImage($image, $filename)
                     '.' .
                     $image->getClientOriginalExtension();
 
+
                 $newImagePaths[] =
                     $this->processImage(
                         $image,
@@ -410,11 +1180,14 @@ private function processImage($image, $filename)
                     );
             }
 
-            $finalImages = array_merge(
-                $finalImages,
-                $newImagePaths
-            );
+
+            $finalImages =
+                array_merge(
+                    $finalImages,
+                    $newImagePaths
+                );
         }
+
 
         /*
         |--------------------------------------------------------------------------
@@ -424,19 +1197,42 @@ private function processImage($image, $filename)
 
         if ($request->filled('temp_images')) {
 
-            $tempDir = public_path('images/temp');
-            $finalDir = public_path('images');
-            $thumbnailDir = public_path('images/thumbnails');
+            $tempDir =
+                public_path(
+                    'images/temp'
+                );
 
-            foreach ($request->temp_images as $tempPath) {
+            $finalDir =
+                public_path(
+                    'images'
+                );
 
-                $filename = basename($tempPath);
+            $thumbnailDir =
+                public_path(
+                    'images/thumbnails'
+                );
+
+
+            foreach (
+                $request->temp_images
+                as $tempPath
+            ) {
+
+                $filename =
+                    basename($tempPath);
+
 
                 $source =
-                    $tempDir . '/' . $filename;
+                    $tempDir .
+                    '/' .
+                    $filename;
+
 
                 $destination =
-                    $finalDir . '/' . $filename;
+                    $finalDir .
+                    '/' .
+                    $filename;
+
 
                 if (file_exists($source)) {
 
@@ -445,16 +1241,19 @@ private function processImage($image, $filename)
                         $destination
                     );
 
+
                     $manager =
                         new ImageManager(
                             new Driver()
                         );
+
 
                     $sizes = [
                         'small' => 150,
                         'medium' => 400,
                         'large' => 800,
                     ];
+
 
                     foreach (
                         $sizes as $size => $width
@@ -465,7 +1264,9 @@ private function processImage($image, $filename)
                             '/' .
                             $size;
 
+
                         if (!file_exists($dir)) {
+
                             mkdir(
                                 $dir,
                                 0755,
@@ -473,29 +1274,42 @@ private function processImage($image, $filename)
                             );
                         }
 
+
                         $thumb =
                             $manager->decodePath(
                                 $destination
                             );
 
+
                         $thumb->scaleDown(
                             width: $width
                         );
 
+
                         $thumb->save(
-                            $dir . '/' . $filename,
+                            $dir .
+                                '/' .
+                                $filename,
                             quality: 80
                         );
                     }
 
-                    $path =
-                        'images/' . $filename;
 
-                    $finalImages[] = $path;
-                    $newImagePaths[] = $path;
+                    $path =
+                        'images/' .
+                        $filename;
+
+
+                    $finalImages[] =
+                        $path;
+
+
+                    $newImagePaths[] =
+                        $path;
                 }
             }
         }
+
 
         /*
         |--------------------------------------------------------------------------
@@ -506,9 +1320,11 @@ private function processImage($image, $filename)
         $primaryImage =
             $product->primary_image;
 
-        // If selected existing image is still available.
+
         if (
-            $request->filled('primary_image') &&
+            $request->filled(
+                'primary_image'
+            ) &&
             in_array(
                 $request->primary_image,
                 $finalImages
@@ -517,22 +1333,19 @@ private function processImage($image, $filename)
 
             $primaryImage =
                 $request->primary_image;
-
         } elseif (
-            $request->filled('primary_image_index') &&
+            $request->filled(
+                'primary_image_index'
+            ) &&
             isset(
-                $newImagePaths[
-                    (int) $request->primary_image_index
-                ]
+                $newImagePaths[(int)
+                    $request->primary_image_index]
             )
         ) {
 
-            // Select newly uploaded image as primary.
             $primaryImage =
-                $newImagePaths[
-                    (int) $request->primary_image_index
-                ];
-
+                $newImagePaths[(int)
+                    $request->primary_image_index];
         } elseif (
             empty($primaryImage) ||
             !in_array(
@@ -541,13 +1354,12 @@ private function processImage($image, $filename)
             )
         ) {
 
-            // If current primary was deleted,
-            // automatically select first remaining image.
             $primaryImage =
                 !empty($finalImages)
-                    ? $finalImages[0]
-                    : null;
+                ? $finalImages[0]
+                : null;
         }
+
 
         /*
         |--------------------------------------------------------------------------
@@ -556,22 +1368,38 @@ private function processImage($image, $filename)
         */
 
         $product->update([
-            'name' => $request->name,
-            'details' => $request->details,
 
-            'images' => array_values(
+            'name' =>
+            $request->name,
+
+            'details' =>
+            $request->details,
+
+            'images' =>
+            array_values(
                 $finalImages
             ),
 
-            // New functionality
-            'primary_image' => $primaryImage,
+            'primary_image' =>
+            $primaryImage,
 
-            'size' => $request->size,
-            'color' => $request->color,
-            'category' => $request->category,
-            'price' => $request->price,
-            'tag_ids' => $request->tag_ids,
+            'size' =>
+            $request->size,
+
+            'color' =>
+            $request->color,
+
+            'category' =>
+            $request->category,
+
+            'price' =>
+            $request->price,
+
+            'tag_ids' =>
+            $request->tag_ids,
+
         ]);
+
 
         return redirect()
             ->route('products.index')
@@ -580,6 +1408,7 @@ private function processImage($image, $filename)
                 'Product updated successfully.'
             );
     }
+
 
     /**
      * Soft delete product.
@@ -592,11 +1421,12 @@ private function processImage($image, $filename)
 
         $product->delete();
 
+
         return redirect()
             ->route('products.index')
             ->with(
                 'success',
-                'Product deleted successfully.'
+                'Product moved to recycle bin.'
             );
     }
 }
